@@ -39,10 +39,14 @@ summary:
   top: 10                # nombre d'affaires affichées
 
 # Critères des affaires du récap (données NG Tools : https://ng-tools.fr/hdv, pas besoin de clé API)
+# Prix de référence = médiane des dernières ventes de l'objet (pas le cours sur 7 jours).
 ngtools:
-  min_value: 1000        # cours 7 j minimum de l'objet ($ / unité)
-  min_discount: 0.20     # annonce la moins chère au moins 20 % sous ce cours
-  min_sold_7d: 2         # vendu au moins 2 fois cette semaine (sinon le cours n'est pas fiable)
+  last_sales: 10         # médiane des 10 dernières ventes
+  min_sales: 3           # au moins 3 ventes connues (sous 5, l'affaire est marquée « peu de ventes »)
+  max_sale_age_days: 90  # on ignore les ventes plus vieilles (large, pour ne pas rater les objets rares)
+  min_value: 1000        # l'objet doit valoir au moins 1 000 $ / unité (médiane)
+  min_discount: 0.20     # annonce la moins chère au moins 20 % sous la médiane
+  max_item_pages: 20     # pages d'objets lues par passage sur NG Tools (pour ne pas surcharger le site)
 
 # Mode API officielle seulement (clé NationsGlory requise) — inutilisé avec NG Tools
 deals:

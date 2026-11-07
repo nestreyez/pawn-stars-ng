@@ -3,9 +3,9 @@
 Surveille l'hôtel des ventes de **Ruby** grâce aux relevés de [NG Tools](https://ng-tools.fr/hdv) (pas besoin de clé API) et poste sur Discord :
 
 - 🔔 **Watchlist (avec @)** : un item que tu suis est mis en vente, ou son annonce la moins chère baisse (ou passe sous ton prix max).
-- 📊 **Récap des affaires (sans @)** : à chaque passage, les 10 meilleures affaires du moment (objets d'au moins **1 000 $**, annonce la moins chère au moins **20 % sous le cours 7 jours**), classées par gain par unité. Réglable dans `summary:` et `ngtools:` de `config.yaml`.
+- 📊 **Récap des affaires (sans @)** : à chaque passage, les 10 meilleures affaires du moment (objets d'au moins **1 000 $**, annonce la moins chère au moins **20 % sous la médiane de leurs 10 dernières ventes**, transferts entre comptes exclus ; les objets rares sont inclus et signalés quand il y a peu de ventes), classées par gain par unité. Réglable dans `summary:` et `ngtools:` de `config.yaml`.
 
-Le bot lit une seule page de NG Tools par passage (toutes les ~15 min). NG Tools relève l'HDV toutes les ~10 min. Le mode « API officielle » (`python -m hdvbot action`) reste disponible si tu obtiens un jour une clé NationsGlory.
+Le bot lit la page HDV de NG Tools, plus au maximum 20 pages d'objets par passage (seulement celles dont les ventes ont changé) : le premier jour, les références se remplissent au fil des passages. NG Tools relève l'HDV toutes les ~10 min. Le mode « API officielle » (`python -m hdvbot action`) reste disponible si tu obtiens un jour une clé NationsGlory.
 
 Il tourne **gratuitement sur GitHub Actions** toutes les ~15 min. Ton PC n'a pas besoin d'être allumé.
 (Il peut aussi tourner comme vrai bot Discord avec commandes `/watch` sur un serveur : voir tout en bas.)
