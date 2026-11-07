@@ -19,7 +19,8 @@ nationsglory:
 poll_minutes: 5
 max_alerts_per_cycle: 10
 
-# Items surveillés. Avec GitHub Actions, c'est ici que tu ajoutes/retires des items
+# Items surveillés : tu es @ quand l'un d'eux est mis en vente moins cher.
+# Avec GitHub Actions, c'est ici que tu ajoutes/retires des items
 # (bouton crayon sur GitHub > Commit changes) : la modif est prise en compte au passage suivant.
 # item : ID comme dans l'URL du site (2535-8) ou l'URL complète.
 # max_price : prix UNITAIRE max ; vide = te prévenir dès qu'une annonce moins chère apparaît.
@@ -32,9 +33,15 @@ watchlist:
   - item: "5097-0"
     max_price:
 
+# Récap envoyé à chaque passage (toutes les ~15 min), SANS ping : les meilleures affaires du moment
+summary:
+  enabled: true
+  top: 10                # nombre d'affaires affichées
+
 # Détection automatique des bonnes affaires sur tout l'HDV
 deals:
   enabled: true
+  ping: false            # true = te @ aussi pour chaque nouvelle affaire (sinon seulement dans le récap)
   min_value: 2000        # l'item doit valoir au moins 2 000 $ l'unité (prix de référence)
   min_discount: 0.30     # et être en vente au moins 30 % sous ce prix
   min_profit: 0          # gain potentiel minimum en $ (0 = pas de filtre)

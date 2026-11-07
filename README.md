@@ -2,8 +2,8 @@
 
 Surveille l'hôtel des ventes de **Ruby** via l'API publique officielle de NationsGlory et te @ sur Discord :
 
-- 🔔 **Watchlist** : un item que tu suis est mis en vente moins cher qu'avant (ou sous ton prix max). Tu reçois le prix unitaire, la quantité, le lien et l'écart au prix habituel.
-- 💰 **Bonnes affaires** : un item qui vaut au moins **2 000 $** l'unité est en vente au moins **30 % sous la médiane de ses 10 dernières ventes**.
+- 🔔 **Watchlist (avec @)** : un item que tu suis est mis en vente moins cher qu'avant (ou sous ton prix max). Tu reçois le prix unitaire, la quantité, le lien et l'écart au prix habituel.
+- 📊 **Récap des affaires (sans @)** : à chaque passage, la liste des 10 meilleures affaires du moment (items d'au moins **2 000 $** l'unité, en vente au moins **30 % sous la médiane de leurs 10 dernières ventes**), classées par gain potentiel. Réglable dans `summary:` de `config.yaml` (`deals.ping: true` pour aussi être @ à chaque nouvelle affaire).
 
 Il tourne **gratuitement sur GitHub Actions** toutes les ~15 min. Ton PC n'a pas besoin d'être allumé.
 (Il peut aussi tourner comme vrai bot Discord avec commandes `/watch` sur un serveur : voir tout en bas.)
