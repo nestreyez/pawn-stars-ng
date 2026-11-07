@@ -9,9 +9,11 @@ Format d'une ligne du tableau (données intégrées à la page Next.js) :
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+import statistics
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,24 +85,154 @@ async def fetch_rows(server: str) -> list[Row]:
             return parse_rows(await r.text())
 
 
+# ---------- dernières ventes d'un objet (page /hdv/<serveur>/<id>) ----------
+
+_A = re.compile(r'"children":"\s*à\s*"')
+_CHILD = re.compile(r'"children":"([^"]*)"')
+_DATE = re.compile(r'"dateTime":"([^"]+)"')
+
+
+def _money(txt: str) -> float | None:
+    t = re.sub(r"[\s\u00a0\u202f$]", "", txt).replace(",", ".")
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def parse_sales(html: str) -> list[tuple[float, int, int]]:
+    """Section « Dernières ventes » : [(prix unitaire $, quantité, timestamp)], la plus récente d'abord."""
+    payload = "".join(json.loads(m.group(1)) for m in _PUSH.finditer(html))
+    i = payload.find("Dernières ventes")
+    if i < 0:
+        raise NGToolsError("section « Dernières ventes » introuvable (le site a peut-être changé)")
+    end = payload.find("Sur chaque serveur", i)
+    sec = payload[i:end if end > 0 else len(payload)]
+    from datetime import datetime
+    out = []
+    marks = list(_A.finditer(sec))
+    for k, m in enumerate(marks):
+        before = _CHILD.findall(sec[max(0, m.start() - 300):m.start()])
+        nxt = marks[k + 1].start() if k + 1 < len(marks) else len(sec)
+        after = sec[m.end():nxt]
+        price = _CHILD.search(after)
+        date = _DATE.search(after)
+        if not before or not price:
+            continue
+        qty, unit = _money(before[-1]), _money(price.group(1))
+        if qty is None or unit is None:
+            continue
+        ts = 0
+        if date:
+            try:
+                ts = int(datetime.fromisoformat(date.group(1).replace("Z", "+00:00")).timestamp())
+            except ValueError:
+                pass
+        out.append((unit, int(qty), ts))
+    return out
+
+
+def recent_reference(sales: list, cfg: Config, now: int | None = None) -> tuple[float, int] | None:
+    """Médiane des N dernières ventes, sans les transferts entre comptes (prix aberrants)."""
+    s = cfg.ngtools
+    now = now or int(time.time())
+    recent = [p for p, _q, ts in sales if not ts or now - ts <= s["max_sale_age_days"] * 86400]
+    recent = recent[: s["last_sales"] * 2]
+    if not recent:
+        return None
+    med = statistics.median(recent[: s["last_sales"]])
+    clean = [p for p in recent if med * 0.2 <= p <= med * 5][: s["last_sales"]]
+    if len(clean) < s["min_sales"]:
+        return None
+    return statistics.median(clean), len(clean)
+
+
+async def fetch_sales(session: aiohttp.ClientSession, server: str, item_id: str) -> list:
+    url = f"{BASE}/hdv/{server}/{item_id.replace(':', '-')}"
+    async with session.get(url) as r:
+        if r.status != 200:
+            raise NGToolsError(f"NG Tools a répondu {r.status} sur {url}")
+        return parse_sales(await r.text())
+
+
+def _candidates(rows: list[Row], cfg: Config, cache: dict, now: int) -> list[Row]:
+    """Objets dont il faut (re)lire les dernières ventes, les plus prometteurs d'abord."""
+    s = cfg.ngtools
+    todo = []
+    for r in rows:
+        if r.ask is None or r.listings == 0:
+            continue
+        c = cache.get(r.id)
+        ref_guess = max(r.ref or 0, (c or {}).get("ref") or 0)
+        if ref_guess:
+            if ref_guess < s["min_value"] * 0.5 or r.ask > ref_guess:
+                continue
+        elif r.ask < s["min_value"] * 0.05:      # aucun cours connu (objet rare) : on regarde quand même
+            continue
+        stale = c is None or c.get("sold") != r.sold_7d or now - c.get("t", 0) > s["sales_ttl_hours"] * 3600
+        if stale:
+            todo.append((0 if c is None else 1, -(ref_guess - r.ask), r))
+    todo.sort(key=lambda x: (x[0], x[1]))
+    return [r for *_k, r in todo]
+
+
+async def refresh_sales(rows: list[Row], cfg: Config, state: dict, fetch=None) -> int:
+    """Met à jour le cache des dernières ventes (quelques pages par passage, pour ménager NG Tools)."""
+    s = cfg.ngtools
+    cache = state.setdefault("sales", {})
+    now = int(time.time())
+    todo = _candidates(rows, cfg, cache, now)[: s["max_item_pages"]]
+    if not todo:
+        return 0
+    done = 0
+
+    async def run(fetcher):
+        nonlocal done
+        for k, r in enumerate(todo):
+            if k:
+                await asyncio.sleep(s["page_delay"])
+            try:
+                sales = await fetcher(r.id)
+            except (NGToolsError, aiohttp.ClientError, TimeoutError, ValueError) as e:
+                log.warning("Ventes de %s : %s", r.id, e)
+                continue
+            ref = recent_reference(sales, cfg, now)
+            cache[r.id] = {"sold": r.sold_7d, "t": now, "ref": ref[0] if ref else None, "n": ref[1] if ref else 0}
+            done += 1
+
+    if fetch is not None:
+        await run(fetch)
+    else:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30),
+                                         headers={"User-Agent": USER_AGENT, "Accept-Language": "fr"}) as sess:
+            await run(lambda item: fetch_sales(sess, cfg.server, item))
+    log.info("Dernières ventes relues pour %d objet(s) (%d en attente)", done,
+             max(0, len(_candidates(rows, cfg, cache, now))))
+    return done
+
+
 # ---------- logique ----------
 
 @dataclass
 class Deal:
     row: Row
+    ref: float         # médiane des dernières ventes
+    n: int             # nombre de ventes dans cette médiane
     discount: float
-    gain: float        # gain par unité si on revend au cours
+    gain: float        # gain par unité si on revend à ce prix
 
 
-def find_deals(rows: list[Row], cfg: Config) -> list[Deal]:
+def find_deals(rows: list[Row], cfg: Config, state: dict) -> list[Deal]:
     s = cfg.ngtools
+    cache = state.get("sales", {})
     out = []
     for r in rows:
-        if r.ask is None or r.ref is None or r.ref < s["min_value"] or r.sold_7d < s["min_sold_7d"]:
+        c = cache.get(r.id)
+        if r.ask is None or not c or not c.get("ref") or c["ref"] < s["min_value"]:
             continue
-        disc = 1 - r.ask / r.ref
+        disc = 1 - r.ask / c["ref"]
         if disc >= s["min_discount"]:
-            out.append(Deal(r, disc, r.ref - r.ask))
+            out.append(Deal(r, c["ref"], c["n"], disc, c["ref"] - r.ask))
     out.sort(key=lambda d: d.gain, reverse=True)
     return out
 
@@ -139,16 +271,17 @@ def summary_embed(cfg: Config, deals: list[Deal], top: int) -> dict:
     s = cfg.ngtools
     if deals:
         lines = [f"**{i}. [{d.row.name}]({item_url(cfg, d.row.id)})** : {fmt_money(d.row.ask)} au lieu de "
-                 f"~{fmt_money(d.row.ref)} (**−{d.discount:.0%}**) · gain ≈ {fmt_money(d.gain)}/u · "
-                 f"{d.row.listings} annonce(s)"
+                 f"~{fmt_money(d.ref)} (**−{d.discount:.0%}**) · gain ≈ {fmt_money(d.gain)}/u · "
+                 f"{d.row.listings} annonce(s)" + (f" · ⚠️ seulement {d.n} ventes connues" if d.n < 5 else "")
                  for i, d in enumerate(deals[:top], 1)]
         if len(deals) > top:
             lines.append(f"… et {len(deals) - top} autre(s).")
         desc = "\n".join(lines)
     else:
         desc = "Aucune affaire en ce moment."
-    desc += (f"\n\n*Objets d'au moins {fmt_money(s['min_value'])}, au moins {s['min_discount']:.0%} sous leur cours "
-             f"7 j, vendus au moins {s['min_sold_7d']} fois cette semaine. Classés par gain par unité. "
+    desc += (f"\n\n*Prix de référence = médiane des {s['last_sales']} dernières ventes (transferts entre comptes "
+             f"exclus, {s['min_sales']} ventes minimum). Objets d'au moins {fmt_money(s['min_value'])}, au moins "
+             f"{s['min_discount']:.0%} en dessous. Classés par gain par unité. "
              f"Données [NG Tools]({BASE}/hdv?serveur={cfg.server}).*")
     return {"title": f"📊 Meilleures affaires HDV {cfg.server.capitalize()}", "description": desc[:4000],
             "color": 0x22C55E if deals else 0x6B7280,
@@ -177,7 +310,7 @@ def _load_state(path: Path) -> dict:
         return {}
 
 
-async def run_ngtools(cfg: Config, rows: list[Row] | None = None) -> int:
+async def run_ngtools(cfg: Config, rows: list[Row] | None = None, fetch_item=None) -> int:
     from .action import send_webhook
     state_path = Path(cfg.db_path).with_name("ngtools_state.json")
     state = _load_state(state_path)
@@ -224,7 +357,8 @@ async def run_ngtools(cfg: Config, rows: list[Row] | None = None) -> int:
             for k in range(0, len(embeds), 10):
                 messages.append({**(ping if k == 0 else {"allowed_mentions": {"parse": []}}), "embeds": embeds[k:k + 10]})
         if cfg.summary_enabled:
-            messages.append({"embeds": [summary_embed(cfg, find_deals(rows, cfg), cfg.summary_top)],
+            await refresh_sales(rows, cfg, state, fetch=fetch_item)
+            messages.append({"embeds": [summary_embed(cfg, find_deals(rows, cfg, state), cfg.summary_top)],
                              "allowed_mentions": {"parse": []}})
 
     # Rappel avant la suspension GitHub (60 jours sans commit)
@@ -261,8 +395,10 @@ async def dry_run(cfg: Config):
         else:
             print(f"  {w.item:>10}  {r.name[:30]:30} annonce min {fmt_money(r.ask):>12}  cours {fmt_money(r.ref):>12}"
                   f"  {r.listings} annonce(s)")
-    deals = find_deals(rows, cfg)
+    state = _load_state(Path(cfg.db_path).with_name("ngtools_state.json"))
+    await refresh_sales(rows, cfg, state)
+    deals = find_deals(rows, cfg, state)
     print(f"\n=== Affaires ({len(deals)}) ===")
     for d in deals[:cfg.summary_top]:
-        print(f"  {d.row.name[:30]:30} {fmt_money(d.row.ask):>12} au lieu de {fmt_money(d.row.ref):>12}"
-              f"  −{d.discount:.0%}  gain {fmt_money(d.gain)}/u")
+        print(f"  {d.row.name[:30]:30} {fmt_money(d.row.ask):>12} au lieu de {fmt_money(d.ref):>12}"
+              f" (médiane {d.n} ventes)  −{d.discount:.0%}  gain {fmt_money(d.gain)}/u")

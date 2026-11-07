@@ -39,7 +39,9 @@ class Config:
     max_alerts_per_cycle: int = 10
     summary_enabled: bool = True     # mode Actions : récap des meilleures affaires à chaque passage, sans ping
     summary_top: int = 10
-    ngtools: dict = field(default_factory=lambda: {"min_value": 1000.0, "min_discount": 0.20, "min_sold_7d": 2})
+    ngtools: dict = field(default_factory=lambda: {
+        "min_value": 1000.0, "min_discount": 0.20, "last_sales": 10, "min_sales": 3, "max_sale_age_days": 90,
+        "max_item_pages": 20, "page_delay": 1.5, "sales_ttl_hours": 6.0})
     ping_deals: bool = False         # True = aussi un @ pour chaque nouvelle affaire
     fields: dict = field(default_factory=dict)
     db_path: str = "hdvbot.sqlite3"
@@ -93,11 +95,9 @@ def load_config(path: str | os.PathLike = "config.yaml", require_discord: str | 
     cfg.summary_enabled = bool(summ.get("enabled", cfg.summary_enabled))
     cfg.summary_top = int(summ.get("top", cfg.summary_top))
     ngt = raw.get("ngtools") or {}
-    for k in ("min_value", "min_discount"):
-        if ngt.get(k) is not None:
-            cfg.ngtools[k] = float(ngt[k])
-    if ngt.get("min_sold_7d") is not None:
-        cfg.ngtools["min_sold_7d"] = int(ngt["min_sold_7d"])
+    for k, v in ngt.items():
+        if k in cfg.ngtools and v is not None:
+            cfg.ngtools[k] = type(cfg.ngtools[k])(v)
     cfg.ping_deals = bool(deals.get("ping", cfg.ping_deals))
     cfg.fields = dict(raw.get("fields") or {})
 
