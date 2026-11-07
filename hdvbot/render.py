@@ -102,3 +102,24 @@ def text_payload(cfg: Config, text: str, ping: bool = False, color: int = GREY, 
         embed["title"] = title[:256]
     return {"content": mention(cfg) if ping and cfg.user_id else None, "embeds": [embed],
             "allowed_mentions": allowed_mentions(cfg)}
+
+
+def summary_payload(cfg: Config, deals: list[Deal], top: int) -> dict:
+    """Récap des meilleures affaires du moment, sans ping."""
+    s = cfg.deals
+    if deals:
+        lines = []
+        for i, d in enumerate(deals[:top], 1):
+            lines.append(f"**{i}. [{d.label}]({cfg.web_url(d.item)})** : {fmt_money(d.ask)} au lieu de "
+                         f"~{fmt_money(d.ref.price)} (**−{d.discount:.0%}**) · {d.cheap_qty} dispo · "
+                         f"gain ≈ {fmt_money(d.profit)}")
+        if len(deals) > top:
+            lines.append(f"… et {len(deals) - top} autre(s).")
+        desc = "\n".join(lines)
+    else:
+        desc = "Aucune affaire en ce moment."
+    desc += (f"\n\n*Critères : item ≥ {fmt_money(s.min_value)}, au moins {s.min_discount:.0%} sous la médiane "
+             f"des {s.last_trades} dernières ventes. Classé par gain potentiel.*")
+    embed = {"title": f"📊 Meilleures affaires HDV {cfg.server.capitalize()}",
+             "description": desc[:4000], "color": GREEN if deals else GREY, "timestamp": _now_iso()}
+    return {"content": None, "embeds": [embed], "allowed_mentions": {"parse": []}}

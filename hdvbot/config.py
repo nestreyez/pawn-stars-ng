@@ -37,6 +37,9 @@ class Config:
     backfill_per_cycle: int = 25
     backfill_ttl_hours: float = 6
     max_alerts_per_cycle: int = 10
+    summary_enabled: bool = True     # mode Actions : récap des meilleures affaires à chaque passage, sans ping
+    summary_top: int = 10
+    ping_deals: bool = False         # True = aussi un @ pour chaque nouvelle affaire
     fields: dict = field(default_factory=dict)
     db_path: str = "hdvbot.sqlite3"
 
@@ -85,6 +88,10 @@ def load_config(path: str | os.PathLike = "config.yaml", require_discord: str | 
     cfg.deals = DealSettings(**{k: v for k, v in deals.items() if k in known})
     cfg.backfill_per_cycle = int(deals.get("backfill_per_cycle", cfg.backfill_per_cycle))
     cfg.backfill_ttl_hours = float(deals.get("backfill_ttl_hours", cfg.backfill_ttl_hours))
+    summ = raw.get("summary") or {}
+    cfg.summary_enabled = bool(summ.get("enabled", cfg.summary_enabled))
+    cfg.summary_top = int(summ.get("top", cfg.summary_top))
+    cfg.ping_deals = bool(deals.get("ping", cfg.ping_deals))
     cfg.fields = dict(raw.get("fields") or {})
 
     if require_discord == "bot":

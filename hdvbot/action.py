@@ -15,7 +15,7 @@ import aiohttp
 from .api import NGApi
 from .config import Config
 from .logic import fmt_money
-from .render import BLUE, ORANGE, alert_payloads, text_payload
+from .render import BLUE, ORANGE, alert_payloads, summary_payload, text_payload
 from .scanner import Scanner
 from .store import Store
 
@@ -95,7 +95,11 @@ async def run_action(cfg: Config) -> int:
                  f"Prix actuels de ta watchlist :",
             title="✅ Surveillance HDV démarrée", color=BLUE, ping=True, lines=_watch_lines(cfg, store) or ["(vide)"]))
 
-    messages += alert_payloads(cfg, hits, deals)
+    # Pings : seulement la watchlist (et les nouvelles affaires si deals.ping: true)
+    messages += alert_payloads(cfg, hits, deals if cfg.ping_deals else [])
+    # Récap sans ping des meilleures affaires du moment, à chaque passage
+    if cfg.summary_enabled and cfg.deals_enabled and not sc.last_error:
+        messages.append(summary_payload(cfg, sc.last_deals, cfg.summary_top))
 
     # Rappel avant la suspension automatique de GitHub (60 jours sans commit)
     last_commit = os.environ.get("HDVBOT_LAST_COMMIT_TS", "").strip()
