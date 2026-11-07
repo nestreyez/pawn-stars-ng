@@ -1,0 +1,8 @@
+# Données locales et secrets : ne jamais publier
+state/
+probe_output/
+*.sqlite3
+.env
+.venv/
+__pycache__/
+.pytest_cache/

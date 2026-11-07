@@ -1,0 +1,3 @@
+# Dépendances du mode GitHub Actions (pas besoin de discord.py : on passe par un webhook)
+aiohttp>=3.9
+PyYAML>=6.0

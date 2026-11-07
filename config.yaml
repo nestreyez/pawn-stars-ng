@@ -1,0 +1,63 @@
+# Configuration du bot HDV.
+# ⚠️ Ce fichier est PUBLIC sur GitHub : n'y mets JAMAIS de secret (token, webhook, clé API).
+# Les secrets passent par les secrets GitHub (mode Actions) ou des variables d'environnement :
+#   DISCORD_WEBHOOK_URL, DISCORD_USER_ID, NG_API_KEY  (et DISCORD_TOKEN pour le mode bot sur un serveur)
+
+discord:
+  # Mode bot sur un serveur/VPS seulement (inutile avec GitHub Actions) :
+  channel_id: 0          # salon où le bot poste
+  guild_id: 0            # ton serveur Discord (les /commandes y apparaissent tout de suite)
+
+nationsglory:
+  server: ruby
+  base_url: https://publicapi.nationsglory.fr/v1
+  request_delay: 0.5     # secondes minimum entre deux requêtes (sois gentil avec l'API)
+  page_size: 100
+
+# Mode bot uniquement (avec GitHub Actions, la fréquence est dans .github/workflows/hdv.yml).
+# L'API rafraîchit les annonces toutes les ~30 min et les ventes toutes les ~15 min.
+poll_minutes: 5
+max_alerts_per_cycle: 10
+
+# Items surveillés. Avec GitHub Actions, c'est ici que tu ajoutes/retires des items
+# (bouton crayon sur GitHub > Commit changes) : la modif est prise en compte au passage suivant.
+# item : ID comme dans l'URL du site (2535-8) ou l'URL complète.
+# max_price : prix UNITAIRE max ; vide = te prévenir dès qu'une annonce moins chère apparaît.
+# mode : cheaper (défaut) = annonce plus basse que la précédente ; all = chaque nouvelle annonce.
+watchlist:
+  - item: "2535-8"
+    max_price:
+  - item: "10162-0"
+    max_price:
+  - item: "5097-0"
+    max_price:
+
+# Détection automatique des bonnes affaires sur tout l'HDV
+deals:
+  enabled: true
+  min_value: 2000        # l'item doit valoir au moins 2 000 $ l'unité (prix de référence)
+  min_discount: 0.30     # et être en vente au moins 30 % sous ce prix
+  min_profit: 0          # gain potentiel minimum en $ (0 = pas de filtre)
+  last_trades: 10        # référence = médiane des 10 dernières ventes
+  min_trades: 5          # il faut au moins 5 ventes connues pour faire confiance à la référence
+  max_trade_age_days: 30 # on ignore les ventes plus vieilles
+  outlier_low: 0.2       # ventes < 20 % de la médiane = transferts entre comptes, ignorées
+  outlier_high: 5.0      # ventes > 5× la médiane ignorées aussi
+  realert_drop: 0.05     # re-ping pour un même item seulement si le prix baisse encore de 5 %
+  use_api_ref_fallback: true   # item trop peu vendu : utiliser le cours fourni par l'API s'il existe
+  backfill_per_cycle: 25 # nb d'historiques d'items téléchargés par passage (le 1er jour, ça se remplit)
+  backfill_ttl_hours: 6
+
+# Si `python -m hdvbot probe` montre un champ mal compris, force son chemin ici, par ex. :
+# fields:
+#   item.ask: "book.best_ask"        # prix unitaire le plus bas en vente
+#   item.name: "item.name"
+#   item.offers: "book.asks"         # liste des annonces
+#   item.count: "book.count"
+#   item.ref: "trade.median_7d"      # cours de référence fourni par l'API
+#   offer.price: "unit_price"
+#   offer.price_is_total: false      # true si le prix d'une annonce est celui du lot entier
+#   trade.price: "unit_price"
+#   trade.price_is_total: false
+#   trade.ts: "time"
+fields: {}
