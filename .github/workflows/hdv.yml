@@ -7,14 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "scan = passage normal · probe = diagnostic de l'API"
+        description: "scan = passage normal · probe = diagnostic (affiche ce que le bot lit, sans rien envoyer)"
         type: choice
         options: [scan, probe]
         default: scan
-      item:
-        description: "Item pour le diagnostic (ex. 2535-8)"
-        required: false
-        default: "2535-8"
 
 # Jamais deux passages en même temps (sinon l'historique sauvegardé se marche dessus)
 concurrency:
@@ -40,12 +36,9 @@ jobs:
       - name: Dépendances
         run: pip install -r requirements-action.txt
 
-      - name: Diagnostic de l'API
+      - name: Diagnostic (NG Tools)
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'probe'
-        run: python -m hdvbot probe -i "$ITEM"
-        env:
-          ITEM: ${{ inputs.item }}
-          NG_API_KEY: ${{ secrets.NG_API_KEY }}
+        run: python -m hdvbot ngtools --dry
 
       - name: Restaurer l'historique
         if: github.event_name == 'schedule' || inputs.mode == 'scan'
@@ -59,11 +52,10 @@ jobs:
         if: github.event_name == 'schedule' || inputs.mode == 'scan'
         run: |
           export HDVBOT_LAST_COMMIT_TS="$(git log -1 --format=%ct)"
-          python -m hdvbot action
+          python -m hdvbot ngtools
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
-          NG_API_KEY: ${{ secrets.NG_API_KEY }}
           HDVBOT_DB: state/hdvbot.sqlite3
 
       - name: Sauvegarder l'historique
