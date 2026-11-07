@@ -1,0 +1,74 @@
+name: Surveillance HDV
+
+on:
+  schedule:
+    # Toutes les 15 min. Minutes décalées (pas :00) : GitHub a moins de retard hors des heures pile.
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "scan = passage normal · probe = diagnostic de l'API"
+        type: choice
+        options: [scan, probe]
+        default: scan
+      item:
+        description: "Item pour le diagnostic (ex. 2535-8)"
+        required: false
+        default: "2535-8"
+
+# Jamais deux passages en même temps (sinon l'historique sauvegardé se marche dessus)
+concurrency:
+  group: hdvbot
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  hdv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-action.txt
+
+      - name: Dépendances
+        run: pip install -r requirements-action.txt
+
+      - name: Diagnostic de l'API
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'probe'
+        run: python -m hdvbot probe -i "$ITEM"
+        env:
+          ITEM: ${{ inputs.item }}
+          NG_API_KEY: ${{ secrets.NG_API_KEY }}
+
+      - name: Restaurer l'historique
+        if: github.event_name == 'schedule' || inputs.mode == 'scan'
+        uses: actions/cache/restore@v5
+        with:
+          path: state
+          key: hdvbot-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: hdvbot-state-
+
+      - name: Passage de surveillance
+        if: github.event_name == 'schedule' || inputs.mode == 'scan'
+        run: |
+          export HDVBOT_LAST_COMMIT_TS="$(git log -1 --format=%ct)"
+          python -m hdvbot action
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
+          NG_API_KEY: ${{ secrets.NG_API_KEY }}
+          HDVBOT_DB: state/hdvbot.sqlite3
+
+      - name: Sauvegarder l'historique
+        if: always() && (github.event_name == 'schedule' || inputs.mode == 'scan')
+        uses: actions/cache/save@v5
+        with:
+          path: state
+          key: hdvbot-state-${{ github.run_id }}-${{ github.run_attempt }}
