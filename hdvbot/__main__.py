@@ -3,7 +3,8 @@
     python -m hdvbot            # lance le bot Discord
     python -m hdvbot probe      # diagnostic de l'API (sans Discord)
     python -m hdvbot once       # un passage de surveillance, résultats dans le terminal (sans Discord)
-    python -m hdvbot action     # un passage + alertes par webhook Discord (mode GitHub Actions)
+    python -m hdvbot action     # un passage + alertes par webhook Discord (API officielle, clé requise)
+    python -m hdvbot ngtools    # un passage + webhook Discord, données NG Tools (sans clé) ; --dry = affiche seulement
 """
 from __future__ import annotations
 
@@ -56,10 +57,11 @@ async def run_once(cfg):
 
 def main():
     ap = argparse.ArgumentParser(prog="hdvbot", description="Bot Discord HDV NationsGlory")
-    ap.add_argument("command", nargs="?", default="run", choices=["run", "probe", "once", "action"])
+    ap.add_argument("command", nargs="?", default="run", choices=["run", "probe", "once", "action", "ngtools"])
     ap.add_argument("-c", "--config", default="config.yaml")
     ap.add_argument("-i", "--item", help="item à tester avec probe (ex. 2535-8)")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--dry", action="store_true", help="ngtools : affiche le résultat sans rien envoyer")
     args = ap.parse_args()
     setup_logging(args.verbose)
 
@@ -69,6 +71,12 @@ def main():
         asyncio.run(run_probe(cfg, parse_item_ref(args.item) if args.item else None))
     elif args.command == "once":
         asyncio.run(run_once(load_config(args.config, require_discord=None)))
+    elif args.command == "ngtools":
+        from .ngtools import dry_run, run_ngtools
+        if args.dry:
+            asyncio.run(dry_run(load_config(args.config, require_discord=None)))
+        else:
+            raise SystemExit(asyncio.run(run_ngtools(load_config(args.config, require_discord="webhook"))))
     elif args.command == "action":
         from .action import run_action
         raise SystemExit(asyncio.run(run_action(load_config(args.config, require_discord="webhook"))))
