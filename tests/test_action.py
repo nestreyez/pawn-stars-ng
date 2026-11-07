@@ -43,14 +43,20 @@ def test_action_runs(tmp_path, monkeypatch):
             assert posts[0]["embeds"][0]["title"] == "✅ Surveillance HDV démarrée"
             assert posts[0]["content"] == "<@42>" and posts[0]["allowed_mentions"]["users"] == ["42"]
             assert "Rouage surveillé" in posts[0]["embeds"][0]["description"]
-            deal_titles = [e["title"] for p in posts[1:] for e in p["embeds"]]
-            assert deal_titles == ["💰 Gros item", "💰 Item rare"]
-            assert posts[1]["username"] == "HDV Ruby"
+            # puis le récap sans ping des affaires (pas de ping par affaire)
+            assert len(posts) == 2
+            recap = posts[1]
+            assert recap.get("content") is None and recap["allowed_mentions"] == {"parse": []}
+            assert recap["embeds"][0]["title"] == "📊 Meilleures affaires HDV Ruby"
+            d = recap["embeds"][0]["description"]
+            assert "1. [Gros item]" in d and "2. [Item rare]" in d
+            assert recap["username"] == "HDV Ruby"
 
-            # 2e passage : rien de neuf -> aucun message
+            # 2e passage : rien de neuf -> juste le récap, sans ping
             posts.clear()
             await run_action(cfg(["2535:8", "200:0"]))
-            assert posts == []
+            assert len(posts) == 1 and posts[0]["embeds"][0]["title"].startswith("📊")
+            assert posts[0].get("content") is None
 
             # 3e passage : nouvelle annonce moins chère + 200:0 retiré de config.yaml + dépôt inactif depuis 55 j
             st["offers"]["2535:8"].append({"unit_price": 2500, "quantity": 3, "seller": "Z"})
@@ -58,14 +64,16 @@ def test_action_runs(tmp_path, monkeypatch):
             await run_action(cfg(["2535:8"]))
             titles = [e.get("title") for p in posts for e in p["embeds"]]
             assert "🔔 Rouage surveillé" in titles
+            ping_msgs = [p for p in posts if p.get("content")]
+            assert ping_msgs and all("🔔" in p["embeds"][0].get("title", "") or "⏰" in p["embeds"][0]["description"] for p in ping_msgs)
             assert any("Aucun commit sur le dépôt depuis 55 jours" in e["description"] for p in posts for e in p["embeds"])
             from hdvbot.store import Store
             assert [w["item"] for w in Store(str(tmp_path / "state" / "db.sqlite3")).watch_list()] == ["2535:8"]
 
-            # 4e passage : rappel d'inactivité pas répété le même jour
+            # 4e passage : rappel d'inactivité pas répété le même jour (seulement le récap)
             posts.clear()
             await run_action(cfg(["2535:8"]))
-            assert posts == []
+            assert len(posts) == 1 and posts[0]["embeds"][0]["title"].startswith("📊")
         finally:
             await api_srv.close()
             await hook_srv.close()
